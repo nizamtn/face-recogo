@@ -1,6 +1,10 @@
 from sqlalchemy import Column, Integer, String, DateTime, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
+import zoneinfo
+
+def get_ist_time():
+    return datetime.now(zoneinfo.ZoneInfo("Asia/Kolkata"))
 
 Base = declarative_base()
 
@@ -15,7 +19,7 @@ class Attendance(Base):
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer)
     name = Column(String)
-    timestamp = Column(DateTime, default=datetime.now)
+    timestamp = Column(DateTime, default=get_ist_time)
 
 engine = create_engine("sqlite:///./attendance.db", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

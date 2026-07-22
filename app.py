@@ -6,8 +6,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from datetime import datetime
+import zoneinfo
 import cloudinary
 import cloudinary.uploader
+
+def get_ist_time():
+    return datetime.now(zoneinfo.ZoneInfo("Asia/Kolkata"))
 
 from models import SessionLocal, Student, Attendance
 
@@ -134,12 +138,12 @@ async def take_attendance(file: UploadFile = File(...), db: Session = Depends(ge
     if conf < 70:
         student = db.query(Student).filter(Student.id == serial).first()
         if student:
-            today = datetime.now().date()
+            today = get_ist_time().date()
             existing = db.query(Attendance).filter(Attendance.student_id == student.id).all()
             already_logged = any(att.timestamp.date() == today for att in existing)
             
             if not already_logged:
-                att = Attendance(student_id=student.id, name=student.name, timestamp=datetime.now())
+                att = Attendance(student_id=student.id, name=student.name, timestamp=get_ist_time())
                 db.add(att)
                 db.commit()
                 return {"message": f"Attendance logged for {student.name}", "success": True}

@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+sqlalchemy
+opencv-contrib-python-headless
+cloudinary
+numpy

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Attendance</title>
+    <link rel="stylesheet" href="static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="glass-container">
+        <header>
+            <h1>Face Attendance</h1>
+            <nav>
+                <button onclick="showSection('attendance')" id="nav-attendance" class="active">Mark Attendance</button>
+                <button onclick="showSection('register')" id="nav-register">Register</button>
+                <button onclick="showSection('dashboard')" id="nav-dashboard">Dashboard</button>
+            </nav>
+        </header>
+
+        <main>
+            <!-- Attendance Section -->
+            <section id="attendance-section" class="active-section">
+                <h2>Mark Attendance</h2>
+                <div class="camera-container">
+                    <video id="attendance-video" autoplay playsinline></video>
+                    <canvas id="attendance-canvas" style="display:none;"></canvas>
+                </div>
+                <button id="btn-take-attendance" class="primary-btn">Take Attendance</button>
+                <div id="attendance-status" class="status-msg"></div>
+            </section>
+
+            <!-- Registration Section -->
+            <section id="register-section">
+                <h2>Register New Student</h2>
+                <input type="text" id="student-name" placeholder="Enter Full Name" class="glass-input">
+                <div class="camera-container">
+                    <video id="register-video" autoplay playsinline></video>
+                    <canvas id="register-canvas" style="display:none;"></canvas>
+                </div>
+                <button id="btn-register" class="primary-btn">Register Face</button>
+                <div id="register-status" class="status-msg"></div>
+            </section>
+
+            <!-- Dashboard Section -->
+            <section id="dashboard-section">
+                <h2>Attendance Records</h2>
+                <div class="table-container">
+                    <table id="records-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Records will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="static/script.js"></script>
+</body>
+</html>

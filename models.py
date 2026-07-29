@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, create_engine
+from sqlalchemy import Column, Integer, String, DateTime, create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 import zoneinfo
@@ -26,3 +26,15 @@ engine = create_engine("sqlite:///./attendance.db", connect_args={"check_same_th
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base.metadata.create_all(bind=engine)
+
+# Auto-migration for SQLite to ensure cloud_url column exists
+try:
+    with engine.connect() as conn:
+        inspector = inspect(engine)
+        if "students" in inspector.get_table_names():
+            columns = [c["name"] for c in inspector.get_columns("students")]
+            if "cloud_url" not in columns:
+                conn.execute(text("ALTER TABLE students ADD COLUMN cloud_url VARCHAR"))
+                conn.commit()
+except Exception as e:
+    print(f"Migration notice: {e}", flush=True)

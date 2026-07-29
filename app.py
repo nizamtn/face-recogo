@@ -1,6 +1,7 @@
 import os
 import cv2
 import numpy as np
+import urllib.request
 from fastapi import FastAPI, File, UploadFile, Depends, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -41,6 +42,18 @@ def get_db():
     finally:
         db.close()
 
+def fetch_image_from_url(url):
+    if not url:
+        return None
+    try:
+        req = urllib.request.urlopen(url, timeout=10)
+        arr = np.asarray(bytearray(req.read()), dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+        return img
+    except Exception as e:
+        print(f"Error fetching image from Cloudinary ({url}): {e}", flush=True)
+        return None
+
 def train_model(db: Session):
     recognizer = cv2.face.LBPHFaceRecognizer_create()
     faces = []
@@ -48,18 +61,42 @@ def train_model(db: Session):
     
     students = db.query(Student).all()
     for s in students:
+        img = None
+        # 1. Try reading local face file
         if s.encoding_file and os.path.exists(s.encoding_file):
             img = cv2.imread(s.encoding_file, cv2.IMREAD_GRAYSCALE)
-            if img is not None:
-                faces.append(img)
-                ids.append(s.id)
+            
+        # 2. Fallback to Cloudinary if local file missing (e.g. cloud host restart)
+        if img is None:
+            url = s.cloud_url or f"https://res.cloudinary.com/kfls4shj/image/upload/face_attendance/faces/{s.id}_{s.name.replace(' ', '_')}.jpg"
+            img = fetch_image_from_url(url)
+            # Save downloaded image locally for caching
+            if img is not None and s.encoding_file:
+                os.makedirs(os.path.dirname(s.encoding_file), exist_ok=True)
+                cv2.imwrite(s.encoding_file, img)
+                
+        if img is not None:
+            faces.append(img)
+            ids.append(s.id)
                 
     if len(faces) > 0:
         recognizer.train(faces, np.array(ids))
         model_path = os.path.join("data", "models", "Trainner.yml")
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
         recognizer.save(model_path)
+        print(f"Model successfully trained with {len(faces)} student face(s).", flush=True)
         return True
-    return False
+    else:
+        print("No student faces available to train model.", flush=True)
+        return False
+
+@app.on_event("startup")
+def startup_event():
+    db = SessionLocal()
+    try:
+        train_model(db)
+    finally:
+        db.close()
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -90,9 +127,6 @@ async def register_student(name: str = Form(...), file: UploadFile = File(...), 
     os.makedirs(os.path.dirname(face_path), exist_ok=True)
     cv2.imwrite(face_path, face_img)
     
-    new_student.encoding_file = face_path
-    db.commit()
-    
     # Upload to Cloudinary
     cloud_url = ""
     try:
@@ -107,16 +141,22 @@ async def register_student(name: str = Form(...), file: UploadFile = File(...), 
     except Exception as e:
         print(f"Failed to upload to Cloudinary: {e}", flush=True)
     
+    new_student.encoding_file = face_path
+    new_student.cloud_url = cloud_url
+    db.commit()
+    
     # Re-train model after registration
     train_model(db)
     
-    return {"message": f"Student '{name}' registered & uploaded to Cloudinary!", "success": True, "cloud_url": cloud_url}
+    return {"message": f"Student '{name}' registered & synced with Cloudinary!", "success": True, "cloud_url": cloud_url}
 
 @app.post("/attendance")
 async def take_attendance(file: UploadFile = File(...), db: Session = Depends(get_db)):
     model_path = os.path.join("data", "models", "Trainner.yml")
     if not os.path.isfile(model_path):
-        return {"error": "No model trained. Please register a student first."}
+        trained = train_model(db)
+        if not trained or not os.path.isfile(model_path):
+            return {"error": "No model trained. Please register a student first."}
         
     recognizer = cv2.face.LBPHFaceRecognizer_create()
     recognizer.read(model_path)

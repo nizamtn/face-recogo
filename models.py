@@ -12,7 +12,8 @@ class Student(Base):
     __tablename__ = "students"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
-    encoding_file = Column(String)  # Path to the numpy array containing the face encoding
+    encoding_file = Column(String)  # Local path fallback
+    cloud_url = Column(String, nullable=True)  # Cloudinary URL
 
 class Attendance(Base):
     __tablename__ = "attendance"

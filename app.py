@@ -7,16 +7,13 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime
-import zoneinfo
+from datetime import datetime, timezone, timedelta
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 
-def get_ist_time():
-    return datetime.now(zoneinfo.ZoneInfo("Asia/Kolkata"))
-
 from models import SessionLocal, Student, Attendance
+from timetable import get_current_period_info, get_ist_now, SUBJECTS, TIMETABLE
 
 app = FastAPI()
 
@@ -95,7 +92,7 @@ def sync_students_from_cloudinary(db: Session):
         existing_students = {s.name.lower(): s for s in db.query(Student).all()}
         
         for r in resources:
-            public_id = r["public_id"]  # e.g. "face_attendance/faces/1_Nizam"
+            public_id = r["public_id"]
             file_name = public_id.split("/")[-1]
             if file_name in ["test_upload", "verification_test"]:
                 continue
@@ -124,14 +121,11 @@ def train_model(db: Session):
     students = db.query(Student).all()
     for s in students:
         img = None
-        # 1. Try reading local face file
         if s.encoding_file and os.path.exists(s.encoding_file):
             img = cv2.imread(s.encoding_file, cv2.IMREAD_GRAYSCALE)
             
-        # 2. Fallback to Cloudinary if local file missing (e.g. cloud host restart)
         if img is None and s.cloud_url:
             img = fetch_image_from_url(s.cloud_url)
-            # Save downloaded image locally for caching
             if img is not None and s.encoding_file:
                 os.makedirs(os.path.dirname(s.encoding_file), exist_ok=True)
                 cv2.imwrite(s.encoding_file, img)
@@ -155,21 +149,14 @@ def train_model(db: Session):
 def startup_event():
     db = SessionLocal()
     try:
-        # 1. Check if DB needs to be restored from Cloudinary
         if db.query(Student).count() == 0:
             restored = restore_db_from_cloud()
             if restored:
-                # Re-bind session to updated DB file
                 db.close()
                 db = SessionLocal()
         
-        # 2. Reconstruct any missing students directly from Cloudinary face storage
         sync_students_from_cloudinary(db)
-        
-        # 3. Train model using all available student faces
         train_model(db)
-        
-        # 4. Save DB backup to Cloudinary
         backup_db_to_cloud()
     finally:
         db.close()
@@ -178,6 +165,11 @@ def startup_event():
 def read_root():
     with open("static/index.html", "r") as f:
         return f.read()
+
+@app.get("/current-period")
+def get_current_period():
+    """Returns the live active period and timetable information."""
+    return get_current_period_info()
 
 @app.post("/register")
 async def register_student(name: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -193,7 +185,6 @@ async def register_student(name: str = Form(...), file: UploadFile = File(...), 
     (x, y, w, h) = faces[0]
     face_img = gray[y:y+h, x:x+w]
     
-    # Generate unique ID
     max_id = db.query(func.max(Student.id)).scalar() or 0
     new_id = max_id + 1
     
@@ -202,7 +193,6 @@ async def register_student(name: str = Form(...), file: UploadFile = File(...), 
     os.makedirs(os.path.dirname(face_path), exist_ok=True)
     cv2.imwrite(face_path, face_img)
     
-    # Upload face image to Cloudinary
     cloud_url = ""
     try:
         result = cloudinary.uploader.upload(
@@ -220,14 +210,17 @@ async def register_student(name: str = Form(...), file: UploadFile = File(...), 
     db.add(new_student)
     db.commit()
     
-    # Re-train model and back up database to Cloudinary
     train_model(db)
     backup_db_to_cloud()
     
     return {"message": f"Student '{name}' registered & synced with Cloudinary!", "success": True, "cloud_url": cloud_url}
 
 @app.post("/attendance")
-async def take_attendance(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def take_attendance(
+    file: UploadFile = File(...),
+    selected_period: str = Form(None),
+    db: Session = Depends(get_db)
+):
     model_path = os.path.join("data", "models", "Trainner.yml")
     if not os.path.isfile(model_path):
         trained = train_model(db)
@@ -250,30 +243,84 @@ async def take_attendance(file: UploadFile = File(...), db: Session = Depends(ge
     face_img = gray[y:y+h, x:x+w]
     
     serial, conf = recognizer.predict(face_img)
-    print(f"Recognized face ID={serial} with confidence/distance={conf}", flush=True)
+    print(f"Recognized face ID={serial} with confidence={conf}", flush=True)
     
     if conf < 75:
         student = db.query(Student).filter(Student.id == serial).first()
         if student:
-            today = get_ist_time().date()
-            existing = db.query(Attendance).filter(Attendance.student_id == student.id).all()
-            already_logged = any(att.timestamp.date() == today for att in existing)
+            # Determine period, subject, faculty from timetable
+            current_info = get_current_period_info()
+            day_name = get_ist_now().strftime("%A")
+            today_str = get_ist_now().strftime("%Y-%m-%d")
             
-            if not already_logged:
-                att = Attendance(student_id=student.id, name=student.name, timestamp=get_ist_time())
-                db.add(att)
-                db.commit()
-                backup_db_to_cloud()
-                return {"message": f"Attendance logged for {student.name}", "success": True}
+            if selected_period and selected_period != "auto":
+                target_period = selected_period
             else:
-                return {"message": f"{student.name} already logged attendance today", "success": True}
+                target_period = current_info.get("period", "Period 1")
+                # If during break or off-hours, fallback to clean period name
+                if "Break" in target_period or "Upcoming" in target_period or "Off" in target_period:
+                    target_period = "Period 1"
+                    
+            day_schedule = TIMETABLE.get(day_name, {})
+            sub_code = day_schedule.get(target_period, "General")
+            sub_info = SUBJECTS.get(sub_code, {"name": sub_code, "faculty": "Faculty Incharge", "code": ""})
+            subject_display = f"{sub_code} - {sub_info['name']}"
+            faculty_display = sub_info["faculty"]
+            
+            # Check if student already marked for THIS specific period on THIS date
+            existing = db.query(Attendance).filter(
+                Attendance.student_id == student.id,
+                Attendance.period == target_period,
+                Attendance.date == today_str
+            ).first()
+            
+            if existing:
+                return {
+                    "message": f"{student.name} is ALREADY marked present for {target_period} ({sub_code}) today!",
+                    "success": True,
+                    "already_marked": True,
+                    "period": target_period,
+                    "subject": subject_display
+                }
+            
+            att = Attendance(
+                student_id=student.id,
+                name=student.name,
+                period=target_period,
+                subject=subject_display,
+                faculty=faculty_display,
+                date=today_str,
+                timestamp=get_ist_now()
+            )
+            db.add(att)
+            db.commit()
+            backup_db_to_cloud()
+            
+            return {
+                "message": f"Present marked for {student.name} in {target_period} ({sub_code})!",
+                "success": True,
+                "period": target_period,
+                "subject": subject_display,
+                "faculty": faculty_display
+            }
     
-    return {"error": "Face not recognized. Please make sure you are registered and facing the camera directly."}
+    return {"error": "Face not recognized. Please face the camera directly in good lighting."}
 
 @app.get("/records")
 def get_records(db: Session = Depends(get_db)):
     records = db.query(Attendance).order_by(Attendance.timestamp.desc()).all()
-    return [{"id": r.id, "name": r.name, "time": r.timestamp.strftime("%Y-%m-%d %H:%M:%S")} for r in records]
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "subject": r.subject or "General",
+            "period": r.period or "Period 1",
+            "faculty": r.faculty or "Faculty",
+            "date": r.date or (r.timestamp.strftime("%Y-%m-%d") if r.timestamp else "-"),
+            "time": r.timestamp.strftime("%I:%M:%S %p") if r.timestamp else "-"
+        }
+        for r in records
+    ]
 
 if __name__ == "__main__":
     import uvicorn

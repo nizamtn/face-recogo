@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Face Attendance</title>
+    <title>S3 AD B - Face Attendance</title>
     <link rel="stylesheet" href="static/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="glass-container">
         <header>
+            <div class="header-badge">S3 AD B • Room 201</div>
             <h1>Face Attendance</h1>
             <nav>
                 <button onclick="showSection('attendance')" id="nav-attendance" class="active">Mark Attendance</button>
@@ -21,12 +22,36 @@
         <main>
             <!-- Attendance Section -->
             <section id="attendance-section" class="active-section">
-                <h2>Mark Attendance</h2>
+                <!-- Live Class Schedule Card -->
+                <div id="live-class-banner" class="live-banner">
+                    <div class="live-indicator">
+                        <span class="dot"></span>
+                        <span id="live-status-text">Loading Timetable...</span>
+                    </div>
+                    <div id="live-subject" class="live-subject">-</div>
+                    <div id="live-faculty" class="live-faculty">-</div>
+                    <div id="live-time" class="live-time">-</div>
+                </div>
+
+                <div class="period-select-wrapper">
+                    <label for="period-select">Period / Subject:</label>
+                    <select id="period-select" class="glass-select">
+                        <option value="auto">⚡ Auto (Current Active Period)</option>
+                        <option value="Period 1">Period 1</option>
+                        <option value="Period 2">Period 2</option>
+                        <option value="Period 3">Period 3</option>
+                        <option value="Period 4">Period 4</option>
+                        <option value="Period 5">Period 5</option>
+                        <option value="Period 6">Period 6</option>
+                        <option value="Period 7">Period 7</option>
+                    </select>
+                </div>
+
                 <div class="camera-container">
                     <video id="attendance-video" autoplay playsinline></video>
                     <canvas id="attendance-canvas" style="display:none;"></canvas>
                 </div>
-                <button id="btn-take-attendance" class="primary-btn">Take Attendance</button>
+                <button id="btn-take-attendance" class="primary-btn">Mark Present</button>
                 <div id="attendance-status" class="status-msg"></div>
             </section>
 
@@ -44,12 +69,16 @@
 
             <!-- Dashboard Section -->
             <section id="dashboard-section">
-                <h2>Attendance Records</h2>
+                <h2>Period Attendance Log</h2>
                 <div class="table-container">
                     <table id="records-table">
                         <thead>
                             <tr>
                                 <th>Name</th>
+                                <th>Subject</th>
+                                <th>Period</th>
+                                <th>Faculty</th>
+                                <th>Date</th>
                                 <th>Time</th>
                             </tr>
                         </thead>

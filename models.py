@@ -30,25 +30,28 @@ class Attendance(Base):
 engine = create_engine("sqlite:///./attendance.db", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base.metadata.create_all(bind=engine)
-
-# Auto-migration for SQLite to ensure all required columns exist
-try:
-    with engine.connect() as conn:
-        inspector = inspect(engine)
-        # Migrate students table
-        if "students" in inspector.get_table_names():
-            student_cols = [c["name"] for c in inspector.get_columns("students")]
-            if "cloud_url" not in student_cols:
-                conn.execute(text("ALTER TABLE students ADD COLUMN cloud_url VARCHAR"))
-                conn.commit()
-                
-        # Migrate attendance table
-        if "attendance" in inspector.get_table_names():
-            att_cols = [c["name"] for c in inspector.get_columns("attendance")]
-            for col_name in ["period", "subject", "faculty", "date"]:
-                if col_name not in att_cols:
-                    conn.execute(text(f"ALTER TABLE attendance ADD COLUMN {col_name} VARCHAR"))
+def ensure_db_schema():
+    """Ensure all required tables and columns exist in SQLite database."""
+    Base.metadata.create_all(bind=engine)
+    try:
+        with engine.connect() as conn:
+            inspector = inspect(engine)
+            # Migrate students table
+            if "students" in inspector.get_table_names():
+                student_cols = [c["name"] for c in inspector.get_columns("students")]
+                if "cloud_url" not in student_cols:
+                    conn.execute(text("ALTER TABLE students ADD COLUMN cloud_url VARCHAR"))
                     conn.commit()
-except Exception as e:
-    print(f"Migration notice: {e}", flush=True)
+                    
+            # Migrate attendance table
+            if "attendance" in inspector.get_table_names():
+                att_cols = [c["name"] for c in inspector.get_columns("attendance")]
+                for col_name in ["period", "subject", "faculty", "date"]:
+                    if col_name not in att_cols:
+                        conn.execute(text(f"ALTER TABLE attendance ADD COLUMN {col_name} VARCHAR"))
+                        conn.commit()
+    except Exception as e:
+        print(f"Migration notice: {e}", flush=True)
+
+# Run schema check on import
+ensure_db_schema()

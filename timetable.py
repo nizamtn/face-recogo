@@ -166,16 +166,29 @@ def get_current_period_info(dt=None):
     
     # Check if weekend
     if day_name in ["Saturday", "Sunday"]:
+        weekend_periods = []
+        for slot_name, s_start, s_end, time_label in REGULAR_SLOTS:
+            if "Break" in slot_name:
+                continue
+            sub_code = TIMETABLE["Monday"].get(slot_name, "General")
+            sub_info = SUBJECTS.get(sub_code, {"name": sub_code, "faculty": "Faculty", "code": ""})
+            weekend_periods.append({
+                "period": slot_name,
+                "subject_code": sub_code,
+                "subject_name": sub_info["name"],
+                "faculty": sub_info["faculty"],
+                "time_range": time_label
+            })
         return {
             "is_class_active": False,
-            "status": "Weekend",
+            "status": "Weekend / Holiday",
             "day": day_name,
             "period": "Off Day",
             "subject_code": "-",
-            "subject_name": "College Holiday / Weekend",
+            "subject_name": "College Weekend (Select period below to test)",
             "faculty": "-",
             "time_range": "-",
-            "today_periods": []
+            "today_periods": weekend_periods
         }
         
     # Build list of periods for today for dropdowns

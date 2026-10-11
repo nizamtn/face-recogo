@@ -78,10 +78,11 @@ def restore_db_from_cloud():
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read()
             if len(data) > 0:
-                from models import engine
+                from models import engine, ensure_db_schema
                 engine.dispose()
                 with open("attendance.db", "wb") as f:
                     f.write(data)
+                ensure_db_schema()
                 print("Restored attendance.db from Cloudinary cloud backup!", flush=True)
                 return True
     except Exception as e:
@@ -154,10 +155,25 @@ import threading
 def initialize_background_sync():
     """Sync database, photos from Cloudinary, and train face model in background."""
     try:
+        from models import ensure_db_schema
+        ensure_db_schema()
+        
+        # Check if local DB is empty
+        db = SessionLocal()
+        student_count = 0
+        try:
+            student_count = db.query(Student).count()
+        except Exception:
+            student_count = 0
+        finally:
+            db.close()
+
+        if student_count == 0:
+            restore_db_from_cloud()
+            
+        # Re-open session after possible restore
         db = SessionLocal()
         try:
-            if db.query(Student).count() == 0:
-                restore_db_from_cloud()
             sync_students_from_cloudinary(db)
             train_model(db)
             backup_db_to_cloud()
@@ -272,7 +288,7 @@ async def take_attendance(
                 if "Break" in target_period or "Upcoming" in target_period or "Off" in target_period:
                     target_period = "Period 1"
                     
-            day_schedule = TIMETABLE.get(day_name, {})
+            day_schedule = TIMETABLE.get(day_name) or TIMETABLE.get("Monday", {})
             sub_code = day_schedule.get(target_period, "General")
             sub_info = SUBJECTS.get(sub_code, {"name": sub_code, "faculty": "Faculty Incharge", "code": ""})
             subject_display = f"{sub_code} - {sub_info['name']}"
@@ -362,7 +378,7 @@ def get_faculty_report(date: str = None, period: str = "Period 1", db: Session =
         dt = get_ist_now()
         day_name = dt.strftime("%A")
         
-    day_schedule = TIMETABLE.get(day_name, {})
+    day_schedule = TIMETABLE.get(day_name) or TIMETABLE.get("Monday", {})
     sub_code = day_schedule.get(period, "General")
     sub_info = SUBJECTS.get(sub_code, {"name": sub_code, "faculty": "Faculty Incharge", "code": ""})
     subject_display = f"{sub_code} - {sub_info['name']}"

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>S3 AD B - Face Attendance</title>
-    <link rel="stylesheet" href="static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=2.2">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -70,7 +70,10 @@
 
             <!-- Regular Dashboard Log Section -->
             <section id="dashboard-section">
-                <h2>Period Attendance Log</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h2 style="margin-bottom: 0;">Period Attendance Log</h2>
+                    <button onclick="loadRecords()" class="secondary-btn" style="padding: 6px 14px; font-size: 0.85rem;">🔄 Refresh</button>
+                </div>
                 <div class="table-container">
                     <table id="records-table">
                         <thead>
@@ -96,6 +99,12 @@
                 <div id="faculty-login-card" class="faculty-card">
                     <h2>Faculty & HOD Login</h2>
                     <p class="card-subtitle">Access period-by-period absentee lists and full-day attendance.</p>
+                    <div class="demo-login-box" style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.85rem; color: #93c5fd; text-align: center;">
+                        <span>Default Credentials: <strong>hod</strong> / <strong>admin123</strong></span>
+                        <div style="margin-top: 8px;">
+                            <button type="button" onclick="quickFillFaculty('hod', 'admin123')" class="secondary-btn" style="font-size: 0.8rem; padding: 4px 12px; background: rgba(59,130,246,0.25);">⚡ 1-Click Sign-In as HOD</button>
+                        </div>
+                    </div>
                     <input type="text" id="faculty-user" placeholder="Username (e.g. hod, teacher)" class="glass-input">
                     <input type="password" id="faculty-pass" placeholder="Password" class="glass-input">
                     <button id="btn-faculty-login" class="primary-btn">Sign In</button>
@@ -126,6 +135,9 @@
                                 <option value="Period 6">Period 6</option>
                                 <option value="Period 7">Period 7</option>
                             </select>
+                        </div>
+                        <div class="filter-group" style="align-self: flex-end;">
+                            <button onclick="loadFacultyReport()" class="secondary-btn" style="padding: 10px 14px; font-size: 0.85rem; height: 42px;">🔄 Refresh</button>
                         </div>
                     </div>
 
@@ -196,6 +208,6 @@
         </main>
     </div>
 
-    <script src="static/script.js"></script>
+    <script src="/static/script.js?v=2.2"></script>
 </body>
 </html>

@@ -149,28 +149,32 @@ def train_model(db: Session):
         print("No student faces available to train model.", flush=True)
         return False
 
-@app.on_event("startup")
-def startup_event():
+import threading
+
+def initialize_background_sync():
+    """Sync database, photos from Cloudinary, and train face model in background."""
     try:
         db = SessionLocal()
         try:
             if db.query(Student).count() == 0:
-                restored = restore_db_from_cloud()
-                if restored:
-                    db.close()
-                    db = SessionLocal()
-            
+                restore_db_from_cloud()
             sync_students_from_cloudinary(db)
             train_model(db)
             backup_db_to_cloud()
         finally:
             db.close()
     except Exception as e:
-        print(f"Non-fatal notice during startup initialization: {e}", flush=True)
+        print(f"Background cloud sync notice: {e}", flush=True)
+
+@app.on_event("startup")
+def startup_event():
+    # Start sync in a daemon thread so the web server boots immediately and never times out on Render
+    threading.Thread(target=initialize_background_sync, daemon=True).start()
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    with open("static/index.html", "r") as f:
+    index_path = os.path.join(BASE_DIR, "static", "index.html")
+    with open(index_path, "r", encoding="utf-8") as f:
         return f.read()
 
 @app.get("/current-period")

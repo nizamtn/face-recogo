@@ -1,8 +1,8 @@
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
 pydantic
 sqlalchemy
 opencv-contrib-python-headless
 cloudinary
-numpy
+numpy<2.0.0

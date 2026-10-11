@@ -17,10 +17,12 @@ from timetable import get_current_period_info, get_ist_now, SUBJECTS, TIMETABLE
 
 app = FastAPI()
 
-os.makedirs("static", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-os.makedirs(os.path.join("data", "faces"), exist_ok=True)
-os.makedirs(os.path.join("data", "models"), exist_ok=True)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+os.makedirs(os.path.join(BASE_DIR, "static"), exist_ok=True)
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+os.makedirs(os.path.join(BASE_DIR, "data", "faces"), exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "data", "models"), exist_ok=True)
 
 # Initialize Cloudinary
 cloudinary.config(
@@ -31,7 +33,7 @@ cloudinary.config(
 )
 print("Cloudinary initialized successfully.", flush=True)
 
-harcascadePath = "haarcascade_frontalface_default.xml"
+harcascadePath = os.path.join(BASE_DIR, "haarcascade_frontalface_default.xml")
 faceCascade = cv2.CascadeClassifier(harcascadePath)
 
 def get_db():
@@ -76,6 +78,8 @@ def restore_db_from_cloud():
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read()
             if len(data) > 0:
+                from models import engine
+                engine.dispose()
                 with open("attendance.db", "wb") as f:
                     f.write(data)
                 print("Restored attendance.db from Cloudinary cloud backup!", flush=True)
@@ -147,19 +151,22 @@ def train_model(db: Session):
 
 @app.on_event("startup")
 def startup_event():
-    db = SessionLocal()
     try:
-        if db.query(Student).count() == 0:
-            restored = restore_db_from_cloud()
-            if restored:
-                db.close()
-                db = SessionLocal()
-        
-        sync_students_from_cloudinary(db)
-        train_model(db)
-        backup_db_to_cloud()
-    finally:
-        db.close()
+        db = SessionLocal()
+        try:
+            if db.query(Student).count() == 0:
+                restored = restore_db_from_cloud()
+                if restored:
+                    db.close()
+                    db = SessionLocal()
+            
+            sync_students_from_cloudinary(db)
+            train_model(db)
+            backup_db_to_cloud()
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Non-fatal notice during startup initialization: {e}", flush=True)
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():

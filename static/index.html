@@ -15,7 +15,8 @@
             <nav>
                 <button onclick="showSection('attendance')" id="nav-attendance" class="active">Mark Attendance</button>
                 <button onclick="showSection('register')" id="nav-register">Register</button>
-                <button onclick="showSection('dashboard')" id="nav-dashboard">Dashboard</button>
+                <button onclick="showSection('dashboard')" id="nav-dashboard">Log</button>
+                <button onclick="showSection('faculty')" id="nav-faculty">HOD / Faculty</button>
             </nav>
         </header>
 
@@ -67,7 +68,7 @@
                 <div id="register-status" class="status-msg"></div>
             </section>
 
-            <!-- Dashboard Section -->
+            <!-- Regular Dashboard Log Section -->
             <section id="dashboard-section">
                 <h2>Period Attendance Log</h2>
                 <div class="table-container">
@@ -86,6 +87,110 @@
                             <!-- Records will be injected here -->
                         </tbody>
                     </table>
+                </div>
+            </section>
+
+            <!-- HOD / Faculty Portal Section -->
+            <section id="faculty-section">
+                <!-- Faculty Login Form -->
+                <div id="faculty-login-card" class="faculty-card">
+                    <h2>Faculty & HOD Login</h2>
+                    <p class="card-subtitle">Access period-by-period absentee lists and full-day attendance.</p>
+                    <input type="text" id="faculty-user" placeholder="Username (e.g. hod, teacher)" class="glass-input">
+                    <input type="password" id="faculty-pass" placeholder="Password" class="glass-input">
+                    <button id="btn-faculty-login" class="primary-btn">Sign In</button>
+                    <div id="faculty-login-status" class="status-msg"></div>
+                </div>
+
+                <!-- Faculty Dashboard (Visible when logged in) -->
+                <div id="faculty-dashboard-content" style="display: none;">
+                    <div class="faculty-top-bar">
+                        <span class="user-pill">Logged in as: <strong id="logged-faculty-name">HOD</strong></span>
+                        <button id="btn-faculty-logout" class="secondary-btn">Log Out</button>
+                    </div>
+
+                    <!-- Filter Controls -->
+                    <div class="faculty-filters">
+                        <div class="filter-group">
+                            <label for="faculty-date-picker">Date:</label>
+                            <input type="date" id="faculty-date-picker" class="glass-input small-input">
+                        </div>
+                        <div class="filter-group">
+                            <label for="faculty-period-picker">Period:</label>
+                            <select id="faculty-period-picker" class="glass-select small-select">
+                                <option value="Period 1">Period 1</option>
+                                <option value="Period 2">Period 2</option>
+                                <option value="Period 3">Period 3</option>
+                                <option value="Period 4">Period 4</option>
+                                <option value="Period 5">Period 5</option>
+                                <option value="Period 6">Period 6</option>
+                                <option value="Period 7">Period 7</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Class Subject Pill -->
+                    <div class="class-summary-card">
+                        <div id="report-subject-name" class="class-title">Loading Class Info...</div>
+                        <div id="report-faculty-name" class="class-desc">-</div>
+                    </div>
+
+                    <!-- Metrics Grid -->
+                    <div class="metrics-grid">
+                        <div class="metric-card metric-absent">
+                            <div class="metric-number" id="metric-absent">0</div>
+                            <div class="metric-label">Absentees</div>
+                        </div>
+                        <div class="metric-card metric-present">
+                            <div class="metric-number" id="metric-present">0</div>
+                            <div class="metric-label">Present</div>
+                        </div>
+                        <div class="metric-card metric-fullday">
+                            <div class="metric-number" id="metric-fullday">0</div>
+                            <div class="metric-label">Full Day (100%)</div>
+                        </div>
+                        <div class="metric-card metric-total">
+                            <div class="metric-number" id="metric-total">0</div>
+                            <div class="metric-label">Total Enrolled</div>
+                        </div>
+                    </div>
+
+                    <!-- View Switcher -->
+                    <div class="report-tabs">
+                        <button onclick="switchReportTab('absent')" id="tab-absent" class="report-tab active">⚠️ Absentees</button>
+                        <button onclick="switchReportTab('present')" id="tab-present" class="report-tab">✅ Present</button>
+                        <button onclick="switchReportTab('fullday')" id="tab-fullday" class="report-tab">⭐ Full-Day Present</button>
+                    </div>
+
+                    <!-- Report Content Area (Clean & Uncluttered) -->
+                    <div class="report-container">
+                        <!-- Absentees View -->
+                        <div id="report-absent-view" class="report-subview">
+                            <div class="report-actions">
+                                <span class="view-title">Absentees for this period:</span>
+                                <button id="btn-copy-absentees" class="action-btn">📋 Copy Absent List</button>
+                            </div>
+                            <div id="absent-list-container" class="clean-list">
+                                <!-- Absentees injected here -->
+                            </div>
+                        </div>
+
+                        <!-- Present View -->
+                        <div id="report-present-view" class="report-subview" style="display: none;">
+                            <div class="view-title">Students present in this period:</div>
+                            <div id="present-list-container" class="clean-list">
+                                <!-- Present students injected here -->
+                            </div>
+                        </div>
+
+                        <!-- Full Day View -->
+                        <div id="report-fullday-view" class="report-subview" style="display: none;">
+                            <div class="view-title">Students with 100% full-day attendance:</div>
+                            <div id="fullday-list-container" class="clean-list">
+                                <!-- Full-day students injected here -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
         </main>

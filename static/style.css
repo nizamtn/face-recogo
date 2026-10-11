@@ -8,6 +8,7 @@
     --text-secondary: #94a3b8;
     --success: #10b981;
     --warning: #f59e0b;
+    --danger: #ef4444;
 }
 
 * {
@@ -114,6 +115,13 @@ h2 {
     margin-bottom: 16px;
     text-align: center;
     font-weight: 500;
+}
+
+.card-subtitle {
+    text-align: center;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
 }
 
 /* Live Class Timetable Card */
@@ -245,6 +253,23 @@ video {
     transform: scale(0.98);
 }
 
+.secondary-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    border: 1px solid var(--glass-border);
+    padding: 6px 14px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.secondary-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: var(--danger);
+    color: #fca5a5;
+}
+
 .glass-input {
     width: 100%;
     background: rgba(15, 23, 42, 0.6);
@@ -252,7 +277,7 @@ video {
     color: white;
     padding: 14px;
     border-radius: 12px;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
     font-size: 1rem;
     outline: none;
     transition: border-color 0.25s;
@@ -308,4 +333,259 @@ th {
 
 tbody tr:hover {
     background: rgba(255, 255, 255, 0.04);
+}
+
+/* Faculty Portal Styles */
+.faculty-card {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    padding: 24px;
+}
+
+.faculty-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.user-pill {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+}
+
+.user-pill strong {
+    color: #60a5fa;
+    text-transform: uppercase;
+}
+
+.faculty-filters {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.filter-group {
+    flex: 1;
+    min-width: 130px;
+}
+
+.filter-group label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.small-input, .small-select {
+    padding: 10px 12px;
+    margin-bottom: 0;
+    font-size: 0.9rem;
+}
+
+.class-summary-card {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 14px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+}
+
+.class-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 3px;
+}
+
+.class-desc {
+    font-size: 0.84rem;
+    color: #93c5fd;
+}
+
+/* Metrics Grid */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+@media (min-width: 480px) {
+    .metrics-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+.metric-card {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 14px 10px;
+    text-align: center;
+}
+
+.metric-number {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 4px;
+}
+
+.metric-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.metric-absent .metric-number {
+    color: #f87171;
+}
+
+.metric-present .metric-number {
+    color: #34d399;
+}
+
+.metric-fullday .metric-number {
+    color: #fbbf24;
+}
+
+.metric-total .metric-number {
+    color: #60a5fa;
+}
+
+/* Report View Switcher Tabs */
+.report-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    background: rgba(15, 23, 42, 0.6);
+    padding: 4px;
+    border-radius: 14px;
+    border: 1px solid var(--glass-border);
+}
+
+.report-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 9px 8px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.report-tab.active {
+    background: rgba(59, 130, 246, 0.25);
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Clean Uncluttered List Styles */
+.report-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.view-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+.action-btn {
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    color: #93c5fd;
+    padding: 6px 14px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    background: rgba(59, 130, 246, 0.4);
+    color: #ffffff;
+}
+
+.clean-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 0.92rem;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid var(--glass-border);
+}
+
+.absent-item {
+    border-left: 4px solid var(--danger);
+}
+
+.absent-item .item-name {
+    font-weight: 600;
+    color: #fca5a5;
+}
+
+.present-item {
+    border-left: 4px solid var(--success);
+}
+
+.present-item .item-name {
+    font-weight: 600;
+    color: #6ee7b7;
+}
+
+.fullday-item {
+    border-left: 4px solid var(--warning);
+}
+
+.fullday-item .item-name {
+    font-weight: 600;
+    color: #fde047;
+}
+
+.item-badge {
+    font-size: 0.76rem;
+    padding: 3px 8px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 24px 16px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    background: rgba(15, 23, 42, 0.4);
+    border-radius: 12px;
+    border: 1px dashed var(--glass-border);
 }

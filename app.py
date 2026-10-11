@@ -322,6 +322,102 @@ def get_records(db: Session = Depends(get_db)):
         for r in records
     ]
 
+@app.post("/api/faculty/login")
+async def faculty_login(username: str = Form(...), password: str = Form(...)):
+    valid_users = ["hod", "teacher", "admin"]
+    faculty_pass = os.environ.get("FACULTY_PASSWORD", "admin123")
+    
+    if username.strip().lower() in valid_users and password.strip() == faculty_pass:
+        return {
+            "success": True,
+            "message": "Login successful",
+            "user": username.strip().lower(),
+            "role": "HOD / Faculty"
+        }
+    return {"success": False, "error": "Invalid username or password"}
+
+@app.get("/api/faculty/report")
+def get_faculty_report(date: str = None, period: str = "Period 1", db: Session = Depends(get_db)):
+    if not date:
+        date = get_ist_now().strftime("%Y-%m-%d")
+        
+    all_students = db.query(Student).order_by(Student.name.asc()).all()
+    total_students_count = len(all_students)
+    
+    try:
+        dt = datetime.strptime(date, "%Y-%m-%d")
+        day_name = dt.strftime("%A")
+    except Exception:
+        dt = get_ist_now()
+        day_name = dt.strftime("%A")
+        
+    day_schedule = TIMETABLE.get(day_name, {})
+    sub_code = day_schedule.get(period, "General")
+    sub_info = SUBJECTS.get(sub_code, {"name": sub_code, "faculty": "Faculty Incharge", "code": ""})
+    subject_display = f"{sub_code} - {sub_info['name']}"
+    faculty_display = sub_info["faculty"]
+    
+    period_records = db.query(Attendance).filter(
+        Attendance.date == date,
+        Attendance.period == period
+    ).all()
+    
+    present_map = {r.student_id: r for r in period_records}
+    
+    present_students = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "time": present_map[s.id].timestamp.strftime("%I:%M %p") if present_map[s.id].timestamp else "-"
+        }
+        for s in all_students if s.id in present_map
+    ]
+    
+    absent_students = [
+        {
+            "id": s.id,
+            "name": s.name
+        }
+        for s in all_students if s.id not in present_map
+    ]
+    
+    day_records = db.query(Attendance).filter(Attendance.date == date).all()
+    student_attended_periods = {}
+    for r in day_records:
+        if r.student_id not in student_attended_periods:
+            student_attended_periods[r.student_id] = set()
+        student_attended_periods[r.student_id].add(r.period)
+        
+    conducted_periods = set(r.period for r in day_records if r.period.startswith("Period"))
+    scheduled_periods = [f"Period {i}" for i in range(1, 8)]
+    required_periods = conducted_periods if len(conducted_periods) > 0 else set(scheduled_periods)
+    
+    full_day_students = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "periods_attended": len(student_attended_periods.get(s.id, set()))
+        }
+        for s in all_students
+        if len(student_attended_periods.get(s.id, set())) >= len(required_periods) and len(required_periods) > 0
+    ]
+    
+    return {
+        "date": date,
+        "day": day_name,
+        "period": period,
+        "subject": subject_display,
+        "faculty": faculty_display,
+        "total_enrolled": total_students_count,
+        "present_count": len(present_students),
+        "absent_count": len(absent_students),
+        "full_day_count": len(full_day_students),
+        "conducted_periods_count": len(conducted_periods),
+        "absent_students": absent_students,
+        "present_students": present_students,
+        "full_day_students": full_day_students
+    }
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))

@@ -1,5 +1,6 @@
 let currentStream = null;
 let currentPeriodData = null;
+let facultyReportData = null;
 
 function showSection(sectionId) {
     document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
@@ -20,6 +21,8 @@ function showSection(sectionId) {
         startCamera('register-video');
     } else if (sectionId === 'dashboard') {
         loadRecords();
+    } else if (sectionId === 'faculty') {
+        checkFacultyAuth();
     }
 }
 
@@ -83,7 +86,6 @@ async function loadCurrentPeriod() {
             timeEl.textContent = data.time_range !== "-" ? `Timing: ${data.time_range}` : "";
         }
 
-        // Populate today's period options in the selector
         if (data.today_periods && data.today_periods.length > 0) {
             selectEl.innerHTML = `<option value="auto">⚡ Auto: Active Period (${data.period})</option>`;
             data.today_periods.forEach(p => {
@@ -215,6 +217,209 @@ async function loadRecords() {
         tbody.innerHTML = '<tr><td colspan="6" class="error-msg" style="text-align:center;">Error loading records</td></tr>';
     }
 }
+
+// ----------------------------------------------------
+// Faculty & HOD Portal Logic
+// ----------------------------------------------------
+
+function checkFacultyAuth() {
+    const isLogged = sessionStorage.getItem('faculty_logged_in');
+    const loginCard = document.getElementById('faculty-login-card');
+    const dashboardContent = document.getElementById('faculty-dashboard-content');
+
+    if (isLogged === 'true') {
+        loginCard.style.display = 'none';
+        dashboardContent.style.display = 'block';
+        document.getElementById('logged-faculty-name').textContent = sessionStorage.getItem('faculty_user') || 'HOD';
+        
+        // Default date picker to today in YYYY-MM-DD
+        const datePicker = document.getElementById('faculty-date-picker');
+        if (!datePicker.value) {
+            const today = new Date().toISOString().split('T')[0];
+            datePicker.value = today;
+        }
+        loadFacultyReport();
+    } else {
+        loginCard.style.display = 'block';
+        dashboardContent.style.display = 'none';
+    }
+}
+
+// Faculty Login Submit
+document.getElementById('btn-faculty-login').addEventListener('click', async () => {
+    const user = document.getElementById('faculty-user').value.trim();
+    const pass = document.getElementById('faculty-pass').value.trim();
+    const statusEl = document.getElementById('faculty-login-status');
+
+    if (!user || !pass) {
+        statusEl.textContent = 'Please enter username and password.';
+        statusEl.className = 'status-msg error-msg';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('username', user);
+    formData.append('password', pass);
+
+    try {
+        const res = await fetch('/api/faculty/login', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await res.json();
+
+        if (res.ok && result.success) {
+            sessionStorage.setItem('faculty_logged_in', 'true');
+            sessionStorage.setItem('faculty_user', result.user.toUpperCase());
+            statusEl.textContent = '';
+            document.getElementById('faculty-pass').value = '';
+            checkFacultyAuth();
+        } else {
+            statusEl.textContent = result.error || 'Login failed.';
+            statusEl.className = 'status-msg error-msg';
+        }
+    } catch (err) {
+        statusEl.textContent = 'Network error.';
+        statusEl.className = 'status-msg error-msg';
+    }
+});
+
+// Faculty Logout
+document.getElementById('btn-faculty-logout').addEventListener('click', () => {
+    sessionStorage.removeItem('faculty_logged_in');
+    sessionStorage.removeItem('faculty_user');
+    checkFacultyAuth();
+});
+
+// Listeners for Date and Period filter changes
+document.getElementById('faculty-date-picker').addEventListener('change', loadFacultyReport);
+document.getElementById('faculty-period-picker').addEventListener('change', loadFacultyReport);
+
+// Load Faculty Period Report
+async function loadFacultyReport() {
+    const date = document.getElementById('faculty-date-picker').value;
+    const period = document.getElementById('faculty-period-picker').value;
+
+    try {
+        const res = await fetch(`/api/faculty/report?date=${date}&period=${encodeURIComponent(period)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        facultyReportData = data;
+
+        // Update Class Banner
+        document.getElementById('report-subject-name').textContent = `${data.period}: ${data.subject}`;
+        document.getElementById('report-faculty-name').textContent = `Faculty Incharge: ${data.faculty} • ${data.day}`;
+
+        // Update Metrics
+        document.getElementById('metric-absent').textContent = data.absent_count;
+        document.getElementById('metric-present').textContent = data.present_count;
+        document.getElementById('metric-fullday').textContent = data.full_day_count;
+        document.getElementById('metric-total').textContent = data.total_enrolled;
+
+        // Render Absentees List (Default)
+        renderAbsentList(data.absent_students, data.period);
+
+        // Render Present List
+        renderPresentList(data.present_students);
+
+        // Render Full Day List
+        renderFullDayList(data.full_day_students);
+
+    } catch (err) {
+        console.error("Error loading faculty report:", err);
+    }
+}
+
+// Render Absentees (Clean, Uncluttered View)
+function renderAbsentList(students, period) {
+    const container = document.getElementById('absent-list-container');
+    if (!students || students.length === 0) {
+        container.innerHTML = '<div class="empty-state">🎉 Excellent! No absentees in this period. 100% Attendance!</div>';
+        return;
+    }
+
+    container.innerHTML = students.map((s, idx) => `
+        <div class="list-item absent-item">
+            <span class="item-name">${idx + 1}. ${s.name}</span>
+            <span class="item-badge" style="color:#f87171;">Absent</span>
+        </div>
+    `).join('');
+}
+
+// Render Present List
+function renderPresentList(students) {
+    const container = document.getElementById('present-list-container');
+    if (!students || students.length === 0) {
+        container.innerHTML = '<div class="empty-state">No student attendance recorded for this period yet.</div>';
+        return;
+    }
+
+    container.innerHTML = students.map((s, idx) => `
+        <div class="list-item present-item">
+            <span class="item-name">${idx + 1}. ${s.name}</span>
+            <span class="item-badge" style="color:#34d399;">Present at ${s.time}</span>
+        </div>
+    `).join('');
+}
+
+// Render Full-Day Attendees
+function renderFullDayList(students) {
+    const container = document.getElementById('fullday-list-container');
+    if (!students || students.length === 0) {
+        container.innerHTML = '<div class="empty-state">No students have completed full-day attendance for this date yet.</div>';
+        return;
+    }
+
+    container.innerHTML = students.map((s, idx) => `
+        <div class="list-item fullday-item">
+            <span class="item-name">${idx + 1}. ${s.name}</span>
+            <span class="item-badge" style="color:#fbbf24;">⭐ ${s.periods_attended} Periods Attended</span>
+        </div>
+    `).join('');
+}
+
+// Switch Report Sub-tabs
+function switchReportTab(tabName) {
+    document.querySelectorAll('.report-tab').forEach(b => b.classList.remove('active'));
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+
+    document.getElementById('report-absent-view').style.display = tabName === 'absent' ? 'block' : 'none';
+    document.getElementById('report-present-view').style.display = tabName === 'present' ? 'block' : 'none';
+    document.getElementById('report-fullday-view').style.display = tabName === 'fullday' ? 'block' : 'none';
+}
+
+// Copy Absentee List Button
+document.getElementById('btn-copy-absentees').addEventListener('click', () => {
+    if (!facultyReportData) return;
+    const btn = document.getElementById('btn-copy-absentees');
+    const absentees = facultyReportData.absent_students || [];
+
+    let text = `📢 S3 AD B - Absentees Report\n`;
+    text += `📅 Date: ${facultyReportData.date} (${facultyReportData.day})\n`;
+    text += `⏰ ${facultyReportData.period}: ${facultyReportData.subject}\n`;
+    text += `👤 Faculty: ${facultyReportData.faculty}\n`;
+    text += `------------------------------------\n`;
+    if (absentees.length === 0) {
+        text += `All students present! No absentees.\n`;
+    } else {
+        text += `Total Absentees: ${absentees.length}\n`;
+        absentees.forEach((s, idx) => {
+            text += `${idx + 1}. ${s.name}\n`;
+        });
+    }
+
+    navigator.clipboard.writeText(text).then(() => {
+        const originalText = btn.textContent;
+        btn.textContent = '✅ Copied to Clipboard!';
+        btn.style.color = '#34d399';
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.color = '#93c5fd';
+        }, 2500);
+    }).catch(err => {
+        alert("Copied text:\n" + text);
+    });
+});
 
 // Auto-refresh period every 30 seconds
 setInterval(() => {

@@ -6,10 +6,12 @@ from fastapi import FastAPI, File, UploadFile, Depends, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from datetime import datetime
 import zoneinfo
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 
 def get_ist_time():
     return datetime.now(zoneinfo.ZoneInfo("Asia/Kolkata"))
@@ -46,13 +48,73 @@ def fetch_image_from_url(url):
     if not url:
         return None
     try:
-        req = urllib.request.urlopen(url, timeout=10)
-        arr = np.asarray(bytearray(req.read()), dtype=np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
-        return img
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            arr = np.asarray(bytearray(resp.read()), dtype=np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+            return img
     except Exception as e:
         print(f"Error fetching image from Cloudinary ({url}): {e}", flush=True)
         return None
+
+def backup_db_to_cloud():
+    """Back up SQLite database to Cloudinary so records persist across restarts."""
+    try:
+        if os.path.exists("attendance.db"):
+            cloudinary.uploader.upload(
+                "attendance.db",
+                resource_type="raw",
+                public_id="face_attendance/db/attendance.db",
+                overwrite=True
+            )
+            print("Successfully backed up attendance.db to Cloudinary.", flush=True)
+    except Exception as e:
+        print(f"Failed to backup attendance.db to Cloudinary: {e}", flush=True)
+
+def restore_db_from_cloud():
+    """Restore SQLite database from Cloudinary if local database is missing or empty."""
+    try:
+        url = cloudinary.utils.cloudinary_url("face_attendance/db/attendance.db", resource_type="raw")[0]
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+            if len(data) > 0:
+                with open("attendance.db", "wb") as f:
+                    f.write(data)
+                print("Restored attendance.db from Cloudinary cloud backup!", flush=True)
+                return True
+    except Exception as e:
+        print(f"Notice: No cloud database backup found or error restoring: {e}", flush=True)
+    return False
+
+def sync_students_from_cloudinary(db: Session):
+    """Self-healing: Reconstruct registered students from Cloudinary images if DB was wiped."""
+    try:
+        res = cloudinary.api.resources(type="upload", prefix="face_attendance/faces", max_results=100)
+        resources = res.get("resources", [])
+        existing_students = {s.name.lower(): s for s in db.query(Student).all()}
+        
+        for r in resources:
+            public_id = r["public_id"]  # e.g. "face_attendance/faces/1_Nizam"
+            file_name = public_id.split("/")[-1]
+            if file_name in ["test_upload", "verification_test"]:
+                continue
+            
+            parts = file_name.split("_", 1)
+            raw_name = parts[1].replace("_", " ") if len(parts) == 2 else file_name
+            cloud_url = r["secure_url"]
+            
+            if raw_name.lower() not in existing_students:
+                max_id = db.query(func.max(Student.id)).scalar() or 0
+                new_id = max_id + 1
+                local_path = os.path.join("data", "faces", f"{new_id}_{raw_name.replace(' ', '_')}.jpg")
+                new_student = Student(id=new_id, name=raw_name, encoding_file=local_path, cloud_url=cloud_url)
+                db.add(new_student)
+                db.commit()
+                existing_students[raw_name.lower()] = new_student
+                print(f"Auto-synced student from Cloudinary: ID={new_id}, Name={raw_name}", flush=True)
+    except Exception as e:
+        print(f"Notice: Could not sync students from Cloudinary API: {e}", flush=True)
 
 def train_model(db: Session):
     recognizer = cv2.face.LBPHFaceRecognizer_create()
@@ -67,9 +129,8 @@ def train_model(db: Session):
             img = cv2.imread(s.encoding_file, cv2.IMREAD_GRAYSCALE)
             
         # 2. Fallback to Cloudinary if local file missing (e.g. cloud host restart)
-        if img is None:
-            url = s.cloud_url or f"https://res.cloudinary.com/kfls4shj/image/upload/face_attendance/faces/{s.id}_{s.name.replace(' ', '_')}.jpg"
-            img = fetch_image_from_url(url)
+        if img is None and s.cloud_url:
+            img = fetch_image_from_url(s.cloud_url)
             # Save downloaded image locally for caching
             if img is not None and s.encoding_file:
                 os.makedirs(os.path.dirname(s.encoding_file), exist_ok=True)
@@ -94,7 +155,22 @@ def train_model(db: Session):
 def startup_event():
     db = SessionLocal()
     try:
+        # 1. Check if DB needs to be restored from Cloudinary
+        if db.query(Student).count() == 0:
+            restored = restore_db_from_cloud()
+            if restored:
+                # Re-bind session to updated DB file
+                db.close()
+                db = SessionLocal()
+        
+        # 2. Reconstruct any missing students directly from Cloudinary face storage
+        sync_students_from_cloudinary(db)
+        
+        # 3. Train model using all available student faces
         train_model(db)
+        
+        # 4. Save DB backup to Cloudinary
+        backup_db_to_cloud()
     finally:
         db.close()
 
@@ -117,23 +193,22 @@ async def register_student(name: str = Form(...), file: UploadFile = File(...), 
     (x, y, w, h) = faces[0]
     face_img = gray[y:y+h, x:x+w]
     
-    new_student = Student(name=name, encoding_file="")
-    db.add(new_student)
-    db.commit()
-    db.refresh(new_student)
+    # Generate unique ID
+    max_id = db.query(func.max(Student.id)).scalar() or 0
+    new_id = max_id + 1
     
-    file_name = f"{new_student.id}_{name.replace(' ', '_')}.jpg"
+    file_name = f"{new_id}_{name.replace(' ', '_')}.jpg"
     face_path = os.path.join("data", "faces", file_name)
     os.makedirs(os.path.dirname(face_path), exist_ok=True)
     cv2.imwrite(face_path, face_img)
     
-    # Upload to Cloudinary
+    # Upload face image to Cloudinary
     cloud_url = ""
     try:
         result = cloudinary.uploader.upload(
             face_path,
             folder="face_attendance/faces",
-            public_id=file_name.replace('.jpg', ''),
+            public_id=f"{new_id}_{name.replace(' ', '_')}",
             overwrite=True
         )
         cloud_url = result.get("secure_url", "")
@@ -141,12 +216,13 @@ async def register_student(name: str = Form(...), file: UploadFile = File(...), 
     except Exception as e:
         print(f"Failed to upload to Cloudinary: {e}", flush=True)
     
-    new_student.encoding_file = face_path
-    new_student.cloud_url = cloud_url
+    new_student = Student(id=new_id, name=name, encoding_file=face_path, cloud_url=cloud_url)
+    db.add(new_student)
     db.commit()
     
-    # Re-train model after registration
+    # Re-train model and back up database to Cloudinary
     train_model(db)
+    backup_db_to_cloud()
     
     return {"message": f"Student '{name}' registered & synced with Cloudinary!", "success": True, "cloud_url": cloud_url}
 
@@ -174,8 +250,9 @@ async def take_attendance(file: UploadFile = File(...), db: Session = Depends(ge
     face_img = gray[y:y+h, x:x+w]
     
     serial, conf = recognizer.predict(face_img)
+    print(f"Recognized face ID={serial} with confidence/distance={conf}", flush=True)
     
-    if conf < 70:
+    if conf < 75:
         student = db.query(Student).filter(Student.id == serial).first()
         if student:
             today = get_ist_time().date()
@@ -186,11 +263,12 @@ async def take_attendance(file: UploadFile = File(...), db: Session = Depends(ge
                 att = Attendance(student_id=student.id, name=student.name, timestamp=get_ist_time())
                 db.add(att)
                 db.commit()
+                backup_db_to_cloud()
                 return {"message": f"Attendance logged for {student.name}", "success": True}
             else:
                 return {"message": f"{student.name} already logged attendance today", "success": True}
     
-    return {"error": "Face not recognized"}
+    return {"error": "Face not recognized. Please make sure you are registered and facing the camera directly."}
 
 @app.get("/records")
 def get_records(db: Session = Depends(get_db)):

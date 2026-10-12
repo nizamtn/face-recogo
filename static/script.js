@@ -155,7 +155,14 @@ async function handleTakeAttendance() {
             method: 'POST',
             body: formData
         });
-        const result = await response.json();
+        
+        let result = {};
+        const textResp = await response.text();
+        try {
+            result = JSON.parse(textResp);
+        } catch (_) {
+            result = { error: `Server error (${response.status}): ${textResp.slice(0, 100)}` };
+        }
         
         if (response.ok && !result.error) {
             statusEl.textContent = result.message;
@@ -165,7 +172,7 @@ async function handleTakeAttendance() {
             statusEl.className = 'status-msg error-msg';
         }
     } catch (error) {
-        statusEl.textContent = 'Network error. Please try again.';
+        statusEl.textContent = 'Connection error: ' + (error.message || 'Please try again.');
         statusEl.className = 'status-msg error-msg';
     }
 }
@@ -201,7 +208,14 @@ async function handleRegister() {
             method: 'POST',
             body: formData
         });
-        const result = await response.json();
+        
+        let result = {};
+        const textResp = await response.text();
+        try {
+            result = JSON.parse(textResp);
+        } catch (_) {
+            result = { error: `Server error (${response.status}): ${textResp.slice(0, 100)}` };
+        }
         
         if (response.ok && !result.error) {
             statusEl.textContent = result.message;
@@ -212,7 +226,7 @@ async function handleRegister() {
             statusEl.className = 'status-msg error-msg';
         }
     } catch (error) {
-        statusEl.textContent = 'Network error. Please try again.';
+        statusEl.textContent = 'Connection error: ' + (error.message || 'Please try again.');
         statusEl.className = 'status-msg error-msg';
     }
 }

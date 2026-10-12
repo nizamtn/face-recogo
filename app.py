@@ -119,35 +119,52 @@ def sync_students_from_cloudinary(db: Session):
         print(f"Notice: Could not sync students from Cloudinary API: {e}", flush=True)
 
 def train_model(db: Session):
-    recognizer = cv2.face.LBPHFaceRecognizer_create()
-    faces = []
-    ids = []
-    
-    students = db.query(Student).all()
-    for s in students:
-        img = None
-        if s.encoding_file and os.path.exists(s.encoding_file):
-            img = cv2.imread(s.encoding_file, cv2.IMREAD_GRAYSCALE)
-            
-        if img is None and s.cloud_url:
-            img = fetch_image_from_url(s.cloud_url)
-            if img is not None and s.encoding_file:
-                os.makedirs(os.path.dirname(s.encoding_file), exist_ok=True)
-                cv2.imwrite(s.encoding_file, img)
+    try:
+        recognizer = cv2.face.LBPHFaceRecognizer_create()
+        faces = []
+        ids = []
+        
+        students = db.query(Student).all()
+        for s in students:
+            img = None
+            if s.encoding_file:
+                clean_path = s.encoding_file.replace("\\", "/")
+                if not os.path.isabs(clean_path):
+                    clean_path = os.path.join(BASE_DIR, clean_path)
+                if os.path.exists(clean_path):
+                    img = cv2.imread(clean_path, cv2.IMREAD_GRAYSCALE)
                 
-        if img is not None:
-            faces.append(img)
-            ids.append(s.id)
-                
-    if len(faces) > 0:
-        recognizer.train(faces, np.array(ids))
-        model_path = os.path.join("data", "models", "Trainner.yml")
-        os.makedirs(os.path.dirname(model_path), exist_ok=True)
-        recognizer.save(model_path)
-        print(f"Model successfully trained with {len(faces)} student face(s).", flush=True)
-        return True
-    else:
-        print("No student faces available to train model.", flush=True)
+            if img is None and s.cloud_url:
+                img = fetch_image_from_url(s.cloud_url)
+                if img is not None:
+                    local_face_dir = os.path.join(BASE_DIR, "data", "faces")
+                    os.makedirs(local_face_dir, exist_ok=True)
+                    clean_name = (s.name or f"student_{s.id}").replace(" ", "_")
+                    save_path = os.path.join(local_face_dir, f"{s.id}_{clean_name}.jpg")
+                    cv2.imwrite(save_path, img)
+                    s.encoding_file = save_path
+                    try:
+                        db.commit()
+                    except Exception:
+                        pass
+                    
+            if img is not None:
+                faces.append(img)
+                ids.append(int(s.id))
+                    
+        if len(faces) > 0:
+            recognizer.train(faces, np.array(ids, dtype=np.int32))
+            model_dir = os.path.join(BASE_DIR, "data", "models")
+            os.makedirs(model_dir, exist_ok=True)
+            model_path = os.path.join(model_dir, "Trainner.yml")
+            recognizer.save(model_path)
+            print(f"Model successfully trained with {len(faces)} student face(s).", flush=True)
+            return True
+        else:
+            print("No student faces available to train model.", flush=True)
+            return False
+    except Exception as e:
+        print(f"Error in train_model: {e}", flush=True)
         return False
 
 import threading
@@ -200,47 +217,59 @@ def get_current_period():
 
 @app.post("/register")
 async def register_student(name: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
-    contents = await file.read()
-    nparr = np.frombuffer(contents, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    faces = faceCascade.detectMultiScale(gray, 1.3, 5)
-    if len(faces) == 0:
-        return {"error": "No face found in image. Please try again in better lighting."}
-    
-    (x, y, w, h) = faces[0]
-    face_img = gray[y:y+h, x:x+w]
-    
-    max_id = db.query(func.max(Student.id)).scalar() or 0
-    new_id = max_id + 1
-    
-    file_name = f"{new_id}_{name.replace(' ', '_')}.jpg"
-    face_path = os.path.join("data", "faces", file_name)
-    os.makedirs(os.path.dirname(face_path), exist_ok=True)
-    cv2.imwrite(face_path, face_img)
-    
-    cloud_url = ""
     try:
-        result = cloudinary.uploader.upload(
-            face_path,
-            folder="face_attendance/faces",
-            public_id=f"{new_id}_{name.replace(' ', '_')}",
-            overwrite=True
-        )
-        cloud_url = result.get("secure_url", "")
-        print(f"Successfully uploaded to Cloudinary: {cloud_url}", flush=True)
+        contents = await file.read()
+        if not contents or len(contents) == 0:
+            return {"error": "Received empty image. Please try again.", "success": False}
+            
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return {"error": "Could not decode captured image. Please try again.", "success": False}
+            
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        faces = faceCascade.detectMultiScale(gray, 1.3, 5)
+        if len(faces) == 0:
+            return {"error": "No face found in image. Please try again in better lighting.", "success": False}
+        
+        (x, y, w, h) = faces[0]
+        face_img = gray[y:y+h, x:x+w]
+        
+        max_id = db.query(func.max(Student.id)).scalar() or 0
+        new_id = max_id + 1
+        
+        clean_name = name.strip().replace(" ", "_")
+        file_name = f"{new_id}_{clean_name}.jpg"
+        faces_dir = os.path.join(BASE_DIR, "data", "faces")
+        os.makedirs(faces_dir, exist_ok=True)
+        face_path = os.path.join(faces_dir, file_name)
+        cv2.imwrite(face_path, face_img)
+        
+        cloud_url = ""
+        try:
+            result = cloudinary.uploader.upload(
+                face_path,
+                folder="face_attendance/faces",
+                public_id=f"{new_id}_{clean_name}",
+                overwrite=True
+            )
+            cloud_url = result.get("secure_url", "")
+            print(f"Successfully uploaded to Cloudinary: {cloud_url}", flush=True)
+        except Exception as e:
+            print(f"Failed to upload to Cloudinary: {e}", flush=True)
+        
+        new_student = Student(id=new_id, name=name.strip(), encoding_file=face_path, cloud_url=cloud_url)
+        db.add(new_student)
+        db.commit()
+        
+        train_model(db)
+        threading.Thread(target=backup_db_to_cloud, daemon=True).start()
+        
+        return {"message": f"Student '{name.strip()}' registered & synced with Cloudinary!", "success": True, "cloud_url": cloud_url}
     except Exception as e:
-        print(f"Failed to upload to Cloudinary: {e}", flush=True)
-    
-    new_student = Student(id=new_id, name=name, encoding_file=face_path, cloud_url=cloud_url)
-    db.add(new_student)
-    db.commit()
-    
-    train_model(db)
-    backup_db_to_cloud()
-    
-    return {"message": f"Student '{name}' registered & synced with Cloudinary!", "success": True, "cloud_url": cloud_url}
+        print(f"Error in register_student: {e}", flush=True)
+        return {"error": f"Registration error: {str(e)}", "success": False}
 
 @app.post("/attendance")
 async def take_attendance(
@@ -248,90 +277,111 @@ async def take_attendance(
     selected_period: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    model_path = os.path.join("data", "models", "Trainner.yml")
-    if not os.path.isfile(model_path):
-        trained = train_model(db)
-        if not trained or not os.path.isfile(model_path):
-            return {"error": "No model trained. Please register a student first."}
+    try:
+        model_dir = os.path.join(BASE_DIR, "data", "models")
+        os.makedirs(model_dir, exist_ok=True)
+        model_path = os.path.join(model_dir, "Trainner.yml")
         
-    recognizer = cv2.face.LBPHFaceRecognizer_create()
-    recognizer.read(model_path)
-    
-    contents = await file.read()
-    nparr = np.frombuffer(contents, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    faces = faceCascade.detectMultiScale(gray, 1.2, 5)
-    if len(faces) == 0:
-        return {"error": "No face found in image. Please try again."}
+        if not os.path.isfile(model_path) or os.path.getsize(model_path) == 0:
+            trained = train_model(db)
+            if not trained or not os.path.isfile(model_path):
+                return {"error": "No face model trained yet. Please register your face first in the Register tab.", "success": False}
+            
+        recognizer = cv2.face.LBPHFaceRecognizer_create()
+        try:
+            recognizer.read(model_path)
+        except Exception as e:
+            print(f"Corrupt model file ({e}), re-training now...", flush=True)
+            trained = train_model(db)
+            if not trained:
+                return {"error": "Face model could not be loaded. Please register your face in the Register tab.", "success": False}
+            recognizer.read(model_path)
         
-    (x, y, w, h) = faces[0]
-    face_img = gray[y:y+h, x:x+w]
-    
-    serial, conf = recognizer.predict(face_img)
-    print(f"Recognized face ID={serial} with confidence={conf}", flush=True)
-    
-    if conf < 75:
-        student = db.query(Student).filter(Student.id == serial).first()
-        if student:
-            # Determine period, subject, faculty from timetable
-            current_info = get_current_period_info()
-            day_name = get_ist_now().strftime("%A")
-            today_str = get_ist_now().strftime("%Y-%m-%d")
+        contents = await file.read()
+        if not contents or len(contents) == 0:
+            return {"error": "Received empty camera capture. Please try again.", "success": False}
             
-            if selected_period and selected_period != "auto":
-                target_period = selected_period
-            else:
-                target_period = current_info.get("period", "Period 1")
-                # If during break or off-hours, fallback to clean period name
-                if "Break" in target_period or "Upcoming" in target_period or "Off" in target_period:
-                    target_period = "Period 1"
-                    
-            day_schedule = TIMETABLE.get(day_name) or TIMETABLE.get("Monday", {})
-            sub_code = day_schedule.get(target_period, "General")
-            sub_info = SUBJECTS.get(sub_code, {"name": sub_code, "faculty": "Faculty Incharge", "code": ""})
-            subject_display = f"{sub_code} - {sub_info['name']}"
-            faculty_display = sub_info["faculty"]
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return {"error": "Could not decode captured photo. Please try again.", "success": False}
             
-            # Check if student already marked for THIS specific period on THIS date
-            existing = db.query(Attendance).filter(
-                Attendance.student_id == student.id,
-                Attendance.period == target_period,
-                Attendance.date == today_str
-            ).first()
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        faces = faceCascade.detectMultiScale(gray, 1.2, 5)
+        if len(faces) == 0:
+            return {"error": "No face found in image. Please face the camera directly in good lighting.", "success": False}
             
-            if existing:
+        (x, y, w, h) = faces[0]
+        face_img = gray[y:y+h, x:x+w]
+        
+        serial, conf = recognizer.predict(face_img)
+        print(f"Recognized face ID={serial} with confidence={conf}", flush=True)
+        
+        if conf < 75:
+            student = db.query(Student).filter(Student.id == serial).first()
+            if student:
+                # Determine period, subject, faculty from timetable
+                current_info = get_current_period_info()
+                day_name = get_ist_now().strftime("%A")
+                today_str = get_ist_now().strftime("%Y-%m-%d")
+                
+                if selected_period and selected_period != "auto":
+                    target_period = selected_period
+                else:
+                    target_period = current_info.get("period", "Period 1")
+                    # If during break or off-hours, fallback to clean period name
+                    if "Break" in target_period or "Upcoming" in target_period or "Off" in target_period:
+                        target_period = "Period 1"
+                        
+                day_schedule = TIMETABLE.get(day_name) or TIMETABLE.get("Monday", {})
+                sub_code = day_schedule.get(target_period, "General")
+                sub_info = SUBJECTS.get(sub_code, {"name": sub_code, "faculty": "Faculty Incharge", "code": ""})
+                subject_display = f"{sub_code} - {sub_info['name']}"
+                faculty_display = sub_info["faculty"]
+                
+                # Check if student already marked for THIS specific period on THIS date
+                existing = db.query(Attendance).filter(
+                    Attendance.student_id == student.id,
+                    Attendance.period == target_period,
+                    Attendance.date == today_str
+                ).first()
+                
+                if existing:
+                    return {
+                        "message": f"{student.name} is ALREADY marked present for {target_period} ({sub_code}) today!",
+                        "success": True,
+                        "already_marked": True,
+                        "period": target_period,
+                        "subject": subject_display
+                    }
+                
+                att = Attendance(
+                    student_id=student.id,
+                    name=student.name,
+                    period=target_period,
+                    subject=subject_display,
+                    faculty=faculty_display,
+                    date=today_str,
+                    timestamp=get_ist_now()
+                )
+                db.add(att)
+                db.commit()
+                threading.Thread(target=backup_db_to_cloud, daemon=True).start()
+                
                 return {
-                    "message": f"{student.name} is ALREADY marked present for {target_period} ({sub_code}) today!",
+                    "message": f"Present marked for {student.name} in {target_period} ({sub_code})!",
                     "success": True,
-                    "already_marked": True,
                     "period": target_period,
-                    "subject": subject_display
+                    "subject": subject_display,
+                    "faculty": faculty_display
                 }
-            
-            att = Attendance(
-                student_id=student.id,
-                name=student.name,
-                period=target_period,
-                subject=subject_display,
-                faculty=faculty_display,
-                date=today_str,
-                timestamp=get_ist_now()
-            )
-            db.add(att)
-            db.commit()
-            backup_db_to_cloud()
-            
-            return {
-                "message": f"Present marked for {student.name} in {target_period} ({sub_code})!",
-                "success": True,
-                "period": target_period,
-                "subject": subject_display,
-                "faculty": faculty_display
-            }
-    
-    return {"error": "Face not recognized. Please face the camera directly in good lighting."}
+        
+        return {"error": "Face not recognized. Please face the camera directly in good lighting.", "success": False}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": f"Attendance processing error: {str(e)}", "success": False}
 
 @app.get("/records")
 def get_records(db: Session = Depends(get_db)):

@@ -495,6 +495,54 @@ def get_faculty_report(date: str = None, period: str = "Period 1", db: Session =
         "full_day_students": full_day_students
     }
 
+# -------------------------------------------------------------------
+# PBADT304 - Introduction to Data Science: Student Dropout Risk APIs
+# -------------------------------------------------------------------
+from analytics import get_dropout_analytics, compute_confusion_matrix, calculate_student_risk
+from pydantic import BaseModel
+
+class SimulationRequest(BaseModel):
+    gpa: float = 3.0
+    attendance_rate: float = 0.85
+    avg_course_grade: float = 75.0
+    course_load: int = 4
+    enrollment_status: str = "Active"
+    lms_logins_past_month: int = 20
+    assignment_submission_rate: float = 0.8
+    video_completion_rate: float = 0.75
+
+@app.get("/api/dropout/overview")
+def api_dropout_overview(
+    limit: int = 100,
+    major: str = None,
+    status: str = None,
+    db: Session = Depends(get_db)
+):
+    """Returns class KPIs, retention rate, and student dataset with calculated risk from college_student_management_data.csv."""
+    try:
+        live_map = {}
+        students = db.query(Student).all()
+        total_conducted = db.query(Attendance.date, Attendance.period).distinct().count()
+        if total_conducted > 0:
+            for s in students:
+                attended_count = db.query(Attendance).filter(Attendance.student_id == s.id).count()
+                pct = round(min(100.0, (attended_count / total_conducted) * 100), 1)
+                live_map[s.name.lower()] = pct
+        return get_dropout_analytics(live_map if len(live_map) > 0 else None, limit=limit, major_filter=major, status_filter=status)
+    except Exception as e:
+        print(f"Error in api_dropout_overview: {e}", flush=True)
+        return get_dropout_analytics(None, limit=limit, major_filter=major, status_filter=status)
+
+@app.get("/api/dropout/confusion-matrix")
+def api_dropout_confusion_matrix(threshold: float = 48.0):
+    """Computes Confusion Matrix and performance metrics at the specified classification threshold."""
+    return compute_confusion_matrix(threshold)
+
+@app.post("/api/dropout/simulate")
+def api_dropout_simulate(payload: SimulationRequest):
+    """Sandbox simulator: returns calculated risk index and dynamic intervention recommendations."""
+    return calculate_student_risk(payload.dict())
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))

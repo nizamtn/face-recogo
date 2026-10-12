@@ -26,6 +26,8 @@ function showSection(sectionId) {
         loadRecords();
     } else if (sectionId === 'faculty') {
         checkFacultyAuth();
+    } else if (sectionId === 'dropout') {
+        loadDropoutAnalytics();
     }
 }
 
@@ -536,6 +538,240 @@ function handleCopyAbsentees() {
     }
 }
 
+// ----------------------------------------------------
+// PBADT304: Student Dropout Risk & Confusion Matrix
+// ----------------------------------------------------
+
+let currentDropoutData = null;
+
+function switchDropoutSubTab(tabName) {
+    document.querySelectorAll('.report-tab').forEach(b => {
+        if (b.id && b.id.startsWith('dtab-')) b.classList.remove('active');
+    });
+    const activeBtn = document.getElementById(`dtab-${tabName}`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    const vMatrix = document.getElementById('dropout-matrix-view');
+    const vSim = document.getElementById('dropout-simulator-view');
+    const vDir = document.getElementById('dropout-directory-view');
+
+    if (vMatrix) vMatrix.style.display = tabName === 'matrix' ? 'block' : 'none';
+    if (vSim) vSim.style.display = tabName === 'simulator' ? 'block' : 'none';
+    if (vDir) vDir.style.display = tabName === 'directory' ? 'block' : 'none';
+
+    if (tabName === 'simulator') {
+        runRiskSimulation();
+    }
+}
+
+async function loadDropoutAnalytics() {
+    loadConfusionMatrix();
+    loadDropoutOverview();
+}
+
+async function loadConfusionMatrix(customThreshold) {
+    const slider = document.getElementById('cm-threshold-slider');
+    const label = document.getElementById('cm-threshold-label');
+    const threshold = customThreshold !== undefined ? customThreshold : (slider ? slider.value : 48);
+
+    if (label) label.textContent = `${threshold}%`;
+
+    try {
+        const res = await fetch(`/api/dropout/confusion-matrix?threshold=${threshold}`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Update Matrix Grid
+        const m = data.matrix;
+        const elTp = document.getElementById('cm-tp');
+        const elTn = document.getElementById('cm-tn');
+        const elFp = document.getElementById('cm-fp');
+        const elFn = document.getElementById('cm-fn');
+        if (elTp) elTp.textContent = m.tp;
+        if (elTn) elTn.textContent = m.tn;
+        if (elFp) elFp.textContent = m.fp;
+        if (elFn) elFn.textContent = m.fn;
+
+        // Update Metrics
+        const met = data.metrics;
+        const elAcc = document.getElementById('cm-acc');
+        const elPrec = document.getElementById('cm-prec');
+        const elRec = document.getElementById('cm-rec');
+        const elF1 = document.getElementById('cm-f1');
+        const elSpec = document.getElementById('cm-spec');
+        if (elAcc) elAcc.textContent = `${met.accuracy}%`;
+        if (elPrec) elPrec.textContent = `${met.precision}%`;
+        if (elRec) elRec.textContent = `${met.recall}%`;
+        if (elF1) elF1.textContent = `${met.f1_score}%`;
+        if (elSpec) elSpec.textContent = `${met.specificity}%`;
+
+        const kpiAcc = document.getElementById('ds-kpi-accuracy');
+        if (kpiAcc) kpiAcc.textContent = `${met.accuracy}%`;
+    } catch (e) {
+        console.warn("Notice loading confusion matrix:", e);
+    }
+}
+
+async function loadDropoutOverview() {
+    const majorSelect = document.getElementById('ds-major-filter');
+    const statusSelect = document.getElementById('ds-status-filter');
+    const searchInput = document.getElementById('ds-search-input');
+
+    const major = majorSelect ? majorSelect.value : '';
+    const status = statusSelect ? statusSelect.value : '';
+    const search = searchInput ? searchInput.value.trim().toUpperCase() : '';
+
+    try {
+        let url = `/api/dropout/overview?limit=150`;
+        if (major) url += `&major=${encodeURIComponent(major)}`;
+        if (status) url += `&status=${encodeURIComponent(status)}`;
+
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        currentDropoutData = data;
+
+        // Update KPIs
+        const kpis = data.kpis;
+        if (document.getElementById('ds-kpi-total')) document.getElementById('ds-kpi-total').textContent = kpis.total_students.toLocaleString();
+        if (document.getElementById('ds-kpi-high-risk')) document.getElementById('ds-kpi-high-risk').textContent = `${kpis.high_risk_count} (${((kpis.high_risk_count/kpis.total_students)*100).toFixed(1)}%)`;
+        if (document.getElementById('ds-kpi-attendance')) document.getElementById('ds-kpi-attendance').textContent = `${kpis.avg_attendance}%`;
+
+        // Render Table
+        renderDropoutTable(data.students, search);
+    } catch (e) {
+        console.warn("Notice loading dropout overview:", e);
+    }
+}
+
+function renderDropoutTable(students, filterQuery = '') {
+    const tbody = document.querySelector('#dropout-students-table tbody');
+    if (!tbody) return;
+
+    let filtered = students || [];
+    if (filterQuery) {
+        filtered = filtered.filter(s => s.student_id.toUpperCase().includes(filterQuery));
+    }
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:18px; color:#94a3b8;">No student records match the filter criteria.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(s => {
+        const riskClass = s.actual_risk === 'High' ? 'badge-high' : (s.actual_risk === 'Medium' ? 'badge-med' : 'badge-low');
+        const predRiskClass = s.predicted_level === 'High Risk' ? 'badge-high' : (s.predicted_level === 'Medium Risk' ? 'badge-med' : 'badge-low');
+        const recText = s.recommendations && s.recommendations.length > 0 ? s.recommendations[0] : 'Standard advisory.';
+
+        return `
+            <tr>
+                <td><strong>${s.student_id}</strong></td>
+                <td><small>${s.major}</small></td>
+                <td><strong>${s.gpa}</strong></td>
+                <td>${s.attendance_rate}%</td>
+                <td><small>${s.enrollment_status}</small></td>
+                <td><span class="badge-risk ${riskClass}">${s.actual_risk}</span></td>
+                <td>
+                    <span class="badge-risk ${predRiskClass}">${s.predicted_score}%</span>
+                </td>
+                <td><small style="color:#cbd5e1;">${recText}</small></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Interactive Simulator Execution
+function runRiskSimulation() {
+    const inputAtt = document.getElementById('sim-input-att');
+    const inputGpa = document.getElementById('sim-input-gpa');
+    const inputGrade = document.getElementById('sim-input-grade');
+    const inputLoad = document.getElementById('sim-input-load');
+    const inputLogins = document.getElementById('sim-input-logins');
+    const inputAssign = document.getElementById('sim-input-assign');
+    const inputStatus = document.getElementById('sim-input-status');
+
+    const attVal = inputAtt ? parseFloat(inputAtt.value) : 80;
+    const gpaVal = inputGpa ? parseFloat(inputGpa.value) : 2.90;
+    const gradeVal = inputGrade ? parseFloat(inputGrade.value) : 75;
+    const loadVal = inputLoad ? parseInt(inputLoad.value) : 4;
+    const loginsVal = inputLogins ? parseInt(inputLogins.value) : 20;
+    const assignVal = inputAssign ? parseFloat(inputAssign.value) : 80;
+    const statusVal = inputStatus ? inputStatus.value : 'Active';
+
+    // Update labels
+    if (document.getElementById('sim-val-att')) document.getElementById('sim-val-att').textContent = `${attVal}%`;
+    if (document.getElementById('sim-val-gpa')) document.getElementById('sim-val-gpa').textContent = gpaVal.toFixed(2);
+    if (document.getElementById('sim-val-grade')) document.getElementById('sim-val-grade').textContent = `${gradeVal}%`;
+    if (document.getElementById('sim-val-load')) document.getElementById('sim-val-load').textContent = `${loadVal} courses`;
+    if (document.getElementById('sim-val-logins')) document.getElementById('sim-val-logins').textContent = `${loginsVal} logins`;
+    if (document.getElementById('sim-val-assign')) document.getElementById('sim-val-assign').textContent = `${assignVal}%`;
+
+    // Local instant calculation for fluid feedback
+    const gpaDef = Math.max(0, Math.min(100, ((4.0 - gpaVal) / 2.0) * 100));
+    const gradeDef = Math.max(0, Math.min(100, ((100 - gradeVal) / 50.0) * 100));
+    const acadDef = (gpaDef * 0.7) + (gradeDef * 0.3);
+
+    const attDef = Math.max(0, Math.min(100, ((100 - attVal) / 40.0) * 100));
+
+    const assignDef = (100 - assignVal);
+    const loginDef = Math.max(0, (35.0 - Math.min(35.0, loginsVal)) / 35.0 * 100);
+    const engDef = (assignDef * 0.5) + (loginDef * 0.5);
+
+    let adminDef = 15.0;
+    if (statusVal.toLowerCase() === 'leave') adminDef = 75.0;
+    else if (statusVal.toLowerCase() === 'graduated') adminDef = 10.0;
+    else if (loadVal >= 6) adminDef = 35.0;
+
+    const riskScore = Math.max(0, Math.min(100, (0.35 * acadDef) + (0.35 * attDef) + (0.15 * engDef) + (0.15 * adminDef)));
+    const roundedScore = riskScore.toFixed(1);
+
+    let riskLevel = 'Low Risk';
+    let riskColor = '#10b981';
+    let riskClass = 'badge-low';
+
+    if (riskScore >= 55.0) {
+        riskLevel = 'High Risk';
+        riskColor = '#ef4444';
+        riskClass = 'badge-high';
+    } else if (riskScore >= 35.0) {
+        riskLevel = 'Medium Risk';
+        riskColor = '#f59e0b';
+        riskClass = 'badge-med';
+    }
+
+    // Update Simulator Output UI
+    if (document.getElementById('sim-score-number')) document.getElementById('sim-score-number').textContent = roundedScore;
+    const badgeEl = document.getElementById('sim-badge-level');
+    if (badgeEl) {
+        badgeEl.textContent = riskLevel;
+        badgeEl.className = `badge-risk ${riskClass}`;
+    }
+
+    const fillEl = document.getElementById('sim-progress-fill');
+    if (fillEl) {
+        fillEl.style.width = `${roundedScore}%`;
+        fillEl.style.backgroundColor = riskColor;
+    }
+
+    if (document.getElementById('sim-def-acad')) document.getElementById('sim-def-acad').textContent = `${acadDef.toFixed(1)}%`;
+    if (document.getElementById('sim-def-att')) document.getElementById('sim-def-att').textContent = `${attDef.toFixed(1)}%`;
+    if (document.getElementById('sim-def-eng')) document.getElementById('sim-def-eng').textContent = `${engDef.toFixed(1)}%`;
+    if (document.getElementById('sim-def-admin')) document.getElementById('sim-def-admin').textContent = `${adminDef.toFixed(1)}%`;
+
+    // Dynamic Recommendations
+    const recList = document.getElementById('sim-rec-list');
+    if (recList) {
+        const recs = [];
+        if (attVal < 75.0) recs.push("Attendance Alert: Attendance below 75% threshold (Parent notice).");
+        if (gpaVal < 2.5 || gradeVal < 65.0) recs.push("Academic Warning: Assign Peer Tutor & Remedial Academic Support.");
+        if (statusVal.toLowerCase() === 'leave') recs.push("Enrollment Check: Student on leave of absence. Advisor consultation.");
+        if (assignVal < 70.0 || loginsVal < 12) recs.push("LMS Engagement Notice: Low portal activity & assignment submission lag.");
+        if (recs.length === 0) recs.push("Student on track. Standard academic advisory & mentoring.");
+
+        recList.innerHTML = recs.map(r => `<li>${r}</li>`).join('');
+    }
+}
+
 // Safe Initialization
 function initApp() {
     // Attach listeners
@@ -559,6 +795,37 @@ function initApp() {
 
     const btnCopy = document.getElementById('btn-copy-absentees');
     if (btnCopy) btnCopy.addEventListener('click', handleCopyAbsentees);
+
+    // Confusion Matrix Slider Listener
+    const cmSlider = document.getElementById('cm-threshold-slider');
+    if (cmSlider) {
+        cmSlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            if (document.getElementById('cm-threshold-label')) {
+                document.getElementById('cm-threshold-label').textContent = `${val}%`;
+            }
+            loadConfusionMatrix(val);
+        });
+    }
+
+    // Simulator Listeners
+    ['sim-input-att', 'sim-input-gpa', 'sim-input-grade', 'sim-input-load', 'sim-input-logins', 'sim-input-assign', 'sim-input-status'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', runRiskSimulation);
+            el.addEventListener('change', runRiskSimulation);
+        }
+    });
+
+    // Directory Search & Filters
+    const searchInput = document.getElementById('ds-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            if (currentDropoutData && currentDropoutData.students) {
+                renderDropoutTable(currentDropoutData.students, searchInput.value.trim().toUpperCase());
+            }
+        });
+    }
 
     // Initial loads
     loadCurrentPeriod();

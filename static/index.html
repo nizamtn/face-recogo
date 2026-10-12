@@ -17,6 +17,7 @@
                 <button onclick="showSection('register')" id="nav-register">Register</button>
                 <button onclick="showSection('dashboard')" id="nav-dashboard">Log</button>
                 <button onclick="showSection('faculty')" id="nav-faculty">HOD / Faculty</button>
+                <button onclick="showSection('dropout')" id="nav-dropout">Dropout Risk & AI</button>
             </nav>
         </header>
 
@@ -204,10 +205,287 @@
                         </div>
                     </div>
                 </div>
+            <!-- Student Dropout Risk Analytics & AI Portal -->
+            <section id="dropout-section">
+                <div class="project-header-card">
+                    <div class="header-badge" style="background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); color: #d8b4fe;">
+                        PBADT304 • Introduction to Data Science • Group 3
+                    </div>
+                    <h2>Predictive Analytics for Student Dropout Risk</h2>
+                    <p class="card-subtitle" style="margin-bottom: 8px;">
+                        Early warning system utilizing behavioral, academic, and administrative data.
+                    </p>
+                    <div class="group-members-pill">
+                        👥 <strong>Group 3:</strong> Rinsha P.A (082) • Salwa Saleem (084) • Rana Afrin (080) • Muhamed Nizam T.N (061)
+                    </div>
+                </div>
+
+                <!-- Executive KPIs Grid -->
+                <div class="metrics-grid" style="margin-bottom: 20px;">
+                    <div class="metric-card">
+                        <div class="metric-number" id="ds-kpi-total">1,545</div>
+                        <div class="metric-label">Dataset Records</div>
+                    </div>
+                    <div class="metric-card metric-absent">
+                        <div class="metric-number" id="ds-kpi-high-risk">805</div>
+                        <div class="metric-label">High Risk (52.1%)</div>
+                    </div>
+                    <div class="metric-card metric-present">
+                        <div class="metric-number" id="ds-kpi-attendance">79.4%</div>
+                        <div class="metric-label">Avg Attendance</div>
+                    </div>
+                    <div class="metric-card metric-fullday">
+                        <div class="metric-number" id="ds-kpi-accuracy">82.7%</div>
+                        <div class="metric-label">Model Accuracy</div>
+                    </div>
+                </div>
+
+                <!-- Section Sub-tabs -->
+                <div class="report-tabs">
+                    <button onclick="switchDropoutSubTab('matrix')" id="dtab-matrix" class="report-tab active">📊 Confusion Matrix</button>
+                    <button onclick="switchDropoutSubTab('simulator')" id="dtab-simulator" class="report-tab">⚡ Risk Simulator</button>
+                    <button onclick="switchDropoutSubTab('directory')" id="dtab-directory" class="report-tab">👥 Student Directory (1,545)</button>
+                </div>
+
+                <!-- 1. Confusion Matrix Subview -->
+                <div id="dropout-matrix-view" class="dropout-subview">
+                    <div class="matrix-card">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                            <div>
+                                <h3 style="font-size:1.1rem; color:#f8fafc; margin-bottom:4px;">Model Confusion Matrix (1,545 Records)</h3>
+                                <p style="font-size:0.82rem; color:#94a3b8;">Evaluated on college_student_management_data.csv</p>
+                            </div>
+                            <div class="threshold-slider-box">
+                                <label for="cm-threshold-slider" style="font-size:0.82rem; color:#93c5fd;">
+                                    Decision Threshold: <strong id="cm-threshold-label">48%</strong>
+                                </label>
+                                <input type="range" id="cm-threshold-slider" min="30" max="70" value="48" step="1" class="glass-slider">
+                            </div>
+                        </div>
+
+                        <!-- 2x2 Matrix Grid -->
+                        <div class="confusion-grid">
+                            <div class="matrix-cell cell-header"></div>
+                            <div class="matrix-cell cell-header">Predicted: High Risk</div>
+                            <div class="matrix-cell cell-header">Predicted: Safe (Med/Low)</div>
+
+                            <div class="matrix-cell cell-header cell-row-header">Actual: High Risk</div>
+                            <div class="matrix-cell cell-tp">
+                                <div class="cell-tag">True Positive (TP)</div>
+                                <div class="cell-val" id="cm-tp">631</div>
+                                <div class="cell-desc">Correctly flagged at-risk</div>
+                            </div>
+                            <div class="matrix-cell cell-fn">
+                                <div class="cell-tag">False Negative (FN)</div>
+                                <div class="cell-val" id="cm-fn">174</div>
+                                <div class="cell-desc">Missed silent dropouts</div>
+                            </div>
+
+                            <div class="matrix-cell cell-header cell-row-header">Actual: Safe</div>
+                            <div class="matrix-cell cell-fp">
+                                <div class="cell-tag">False Positive (FP)</div>
+                                <div class="cell-val" id="cm-fp">93</div>
+                                <div class="cell-desc">False alarms</div>
+                            </div>
+                            <div class="matrix-cell cell-tn">
+                                <div class="cell-tag">True Negative (TN)</div>
+                                <div class="cell-val" id="cm-tn">647</div>
+                                <div class="cell-desc">Correctly confirmed safe</div>
+                            </div>
+                        </div>
+
+                        <!-- Performance Metrics Row -->
+                        <div class="cm-metrics-row">
+                            <div class="cm-metric-pill">
+                                <span class="cm-metric-name">Accuracy</span>
+                                <strong class="cm-metric-val" id="cm-acc">82.7%</strong>
+                            </div>
+                            <div class="cm-metric-pill">
+                                <span class="cm-metric-name">Precision</span>
+                                <strong class="cm-metric-val" id="cm-prec">87.2%</strong>
+                            </div>
+                            <div class="cm-metric-pill">
+                                <span class="cm-metric-name">Recall (Sensitivity)</span>
+                                <strong class="cm-metric-val" id="cm-rec">78.4%</strong>
+                            </div>
+                            <div class="cm-metric-pill">
+                                <span class="cm-metric-name">F1-Score</span>
+                                <strong class="cm-metric-val" id="cm-f1">82.6%</strong>
+                            </div>
+                            <div class="cm-metric-pill">
+                                <span class="cm-metric-name">Specificity</span>
+                                <strong class="cm-metric-val" id="cm-spec">87.4%</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Interactive Risk Simulator Subview -->
+                <div id="dropout-simulator-view" class="dropout-subview" style="display: none;">
+                    <div class="simulator-card">
+                        <h3 style="font-size:1.1rem; margin-bottom:6px; color:#f8fafc;">Interactive Risk Simulator Sandbox</h3>
+                        <p style="font-size:0.83rem; color:#94a3b8; margin-bottom:18px;">
+                            Slide variables to see dynamic Dropout Risk Index updates and automated intervention recommendations in real time.
+                        </p>
+
+                        <div class="sim-layout">
+                            <div class="sim-controls">
+                                <div class="sim-control-group">
+                                    <div class="sim-label-row">
+                                        <span>Attendance Rate:</span>
+                                        <strong id="sim-val-att">80%</strong>
+                                    </div>
+                                    <input type="range" id="sim-input-att" min="50" max="100" value="80" class="glass-slider">
+                                </div>
+
+                                <div class="sim-control-group">
+                                    <div class="sim-label-row">
+                                        <span>Cumulative GPA (out of 4.0):</span>
+                                        <strong id="sim-val-gpa">2.90</strong>
+                                    </div>
+                                    <input type="range" id="sim-input-gpa" min="2.0" max="4.0" step="0.05" value="2.90" class="glass-slider">
+                                </div>
+
+                                <div class="sim-control-group">
+                                    <div class="sim-label-row">
+                                        <span>Average Course Grade:</span>
+                                        <strong id="sim-val-grade">75%</strong>
+                                    </div>
+                                    <input type="range" id="sim-input-grade" min="50" max="100" value="75" class="glass-slider">
+                                </div>
+
+                                <div class="sim-control-group">
+                                    <div class="sim-label-row">
+                                        <span>Course Load:</span>
+                                        <strong id="sim-val-load">4 courses</strong>
+                                    </div>
+                                    <input type="range" id="sim-input-load" min="3" max="6" value="4" class="glass-slider">
+                                </div>
+
+                                <div class="sim-control-group">
+                                    <div class="sim-label-row">
+                                        <span>LMS Logins Past Month:</span>
+                                        <strong id="sim-val-logins">20 logins</strong>
+                                    </div>
+                                    <input type="range" id="sim-input-logins" min="0" max="40" value="20" class="glass-slider">
+                                </div>
+
+                                <div class="sim-control-group">
+                                    <div class="sim-label-row">
+                                        <span>Assignment Submission Rate:</span>
+                                        <strong id="sim-val-assign">80%</strong>
+                                    </div>
+                                    <input type="range" id="sim-input-assign" min="40" max="100" value="80" class="glass-slider">
+                                </div>
+
+                                <div class="sim-control-group">
+                                    <label style="font-size:0.83rem; color:#94a3b8; display:block; margin-bottom:6px;">Enrollment Status:</label>
+                                    <select id="sim-input-status" class="glass-select" style="width:100%;">
+                                        <option value="Active">Active Student</option>
+                                        <option value="Leave">On Leave of Absence</option>
+                                        <option value="Graduated">Graduated / Alumni</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Live Output Display Card -->
+                            <div class="sim-result-card">
+                                <div class="sim-score-header">
+                                    <span>Predicted Dropout Risk</span>
+                                    <span id="sim-badge-level" class="badge-risk badge-high">High Risk</span>
+                                </div>
+                                <div class="sim-score-display">
+                                    <span id="sim-score-number">54.2</span><span style="font-size:1.2rem; color:#94a3b8;">/100</span>
+                                </div>
+                                <div class="sim-progress-bar">
+                                    <div id="sim-progress-fill" style="width: 54.2%; background: #ef4444;"></div>
+                                </div>
+
+                                <div class="sim-deficits-list">
+                                    <div class="sim-deficit-item">
+                                        <span>Academic Deficit:</span>
+                                        <strong id="sim-def-acad">55.0%</strong>
+                                    </div>
+                                    <div class="sim-deficit-item">
+                                        <span>Attendance Deficit:</span>
+                                        <strong id="sim-def-att">50.0%</strong>
+                                    </div>
+                                    <div class="sim-deficit-item">
+                                        <span>Engagement Deficit:</span>
+                                        <strong id="sim-def-eng">35.0%</strong>
+                                    </div>
+                                    <div class="sim-deficit-item">
+                                        <span>Admin / Status Deficit:</span>
+                                        <strong id="sim-def-admin">15.0%</strong>
+                                    </div>
+                                </div>
+
+                                <div class="sim-rec-box">
+                                    <strong style="color:#f8fafc; font-size:0.85rem; display:block; margin-bottom:6px;">Automated Intervention Pathways:</strong>
+                                    <ul id="sim-rec-list" class="sim-rec-list">
+                                        <li>Attendance Alert: Class attendance below 75% threshold.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Student Directory Subview -->
+                <div id="dropout-directory-view" class="dropout-subview" style="display: none;">
+                    <div class="faculty-filters" style="margin-bottom: 14px;">
+                        <div class="filter-group" style="flex: 2;">
+                            <label for="ds-search-input">Search Student ID:</label>
+                            <input type="text" id="ds-search-input" placeholder="e.g. S001, S015..." class="glass-input small-input">
+                        </div>
+                        <div class="filter-group">
+                            <label for="ds-major-filter">Major:</label>
+                            <select id="ds-major-filter" class="glass-select small-select">
+                                <option value="">All Majors</option>
+                                <option value="Computer Science">Computer Science</option>
+                                <option value="Engineering">Engineering</option>
+                                <option value="Business">Business</option>
+                                <option value="Arts">Arts</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="ds-status-filter">Status:</label>
+                            <select id="ds-status-filter" class="glass-select small-select">
+                                <option value="">All Statuses</option>
+                                <option value="Active">Active</option>
+                                <option value="Leave">Leave</option>
+                                <option value="Graduated">Graduated</option>
+                            </select>
+                        </div>
+                        <div class="filter-group" style="align-self: flex-end;">
+                            <button onclick="loadDropoutOverview()" class="secondary-btn" style="padding: 10px 14px; font-size: 0.85rem; height: 42px;">🔄 Filter</button>
+                        </div>
+                    </div>
+
+                    <div class="table-container" style="max-height: 480px; overflow-y: auto;">
+                        <table id="dropout-students-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Major</th>
+                                    <th>GPA</th>
+                                    <th>Attendance</th>
+                                    <th>Status</th>
+                                    <th>Actual Risk</th>
+                                    <th>Model Score</th>
+                                    <th>Recommendations</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </section>
         </main>
     </div>
 
-    <script src="/static/script.js?v=2.3"></script>
+    <script src="/static/script.js?v=3.0"></script>
 </body>
 </html>
